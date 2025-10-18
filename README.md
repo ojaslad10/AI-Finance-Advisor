@@ -55,15 +55,6 @@ It integrates features like **EMI management**, **daily summaries**, and **AI ch
 
 ---
 
-## 📸 Screenshots
-
-| Dashboard | Category Breakdown | EMI Management |
-|:-----------:|:------------------:|:------------------:|
-| ![Dashboard](assets/dashboard.png) | ![Categories](assets/categories.png) | ![EMI](assets/emi.png) |
-
-*(Add your actual screenshots in an `/assets` folder and update paths accordingly)*
-
----
 
 ## ⚙️ Setup Instructions
 
