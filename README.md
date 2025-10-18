@@ -64,22 +64,5 @@ It integrates features like **EMI management**, **daily summaries**, and **AI ch
    git clone https://github.com/<your-username>/AI-Expense-Tracker.git
    cd backend
 
-## Folder Structure
 
-   AI-Expense-Tracker/
-│
-├── backend/                    # Spring Boot Backend
-│   ├── src/main/java/...       # Controllers, Models, Services
-│   └── application.properties
-│
-├── frontend/                   # Android App (Jetpack Compose)
-│   ├── ui/                     # Composables and Screens
-│   ├── data/                   # Retrofit, Models, Repositories
-│   └── viewmodel/              # MainViewModel, States
-│
-├── ml_services/                # AI Microservice for analysis (Python)
-│   ├── app.py
-│   └── generate_fake_data.py
-│
-└── README.md
 
