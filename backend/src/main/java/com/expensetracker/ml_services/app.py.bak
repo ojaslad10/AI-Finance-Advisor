@@ -1,0 +1,286 @@
+import os
+from fastapi import FastAPI
+from pymongo import MongoClient
+from datetime import datetime, date
+from collections import defaultdict
+import statistics
+import joblib
+import numpy as np
+import pandas as pd
+from bson.objectid import ObjectId
+
+# =======================
+# ⚙️ Configuration
+# =======================
+MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
+MONGODB_DATABASE = os.getenv("MONGODB_DATABASE", "test")
+MONGODB_COLLECTION = os.getenv("MONGODB_COLLECTION", "expenses")
+
+client = MongoClient(MONGODB_URI)
+db = client[MONGODB_DATABASE]
+col = db[MONGODB_COLLECTION]
+
+# Debug: print connection info
+try:
+    print("MONGO DEBUG -> URI:", MONGODB_URI)
+    print("MONGO DEBUG -> DB:", MONGODB_DATABASE, "COL:", MONGODB_COLLECTION, "TOTAL_DOCS:", col.count_documents({}))
+except Exception as _:
+    print("MONGO DEBUG -> failed to count documents (connection issue?)")
+
+app = FastAPI(title="Expense ML Service")
+
+# =======================
+# 🤖 Load ML Model
+# =======================
+MODEL_PATH = os.path.join(os.path.dirname(__file__), "models", "monthly_spend_model.joblib")
+model_bundle = None
+model = None
+cat_le = None
+user_le = None
+
+try:
+    if os.path.exists(MODEL_PATH):
+        model_bundle = joblib.load(MODEL_PATH)
+        model = model_bundle.get("model")
+        cat_le = model_bundle.get("cat_le")
+        user_le = model_bundle.get("user_le")
+        print("Loaded ML model from", MODEL_PATH)
+    else:
+        print("No ML model found at", MODEL_PATH)
+except Exception as e:
+    print("Failed to load ML model:", e)
+    model = None
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
+# =======================
+# 📅 Helper functions
+# =======================
+def parse_date_iso(s):
+    try:
+        return datetime.fromisoformat(s).date()
+    except Exception:
+        return None
+
+
+def month_key(d: date):
+    return d.year, d.month
+
+
+def next_month_key(y, m):
+    if m == 12:
+        return (y + 1, 1)
+    return (y, m + 1)
+
+
+# =======================
+# 🔍 Analyze endpoint
+# =======================
+@app.get("/analyze/{user_id}")
+def analyze(user_id: str):
+    try:
+        oid = ObjectId(user_id)
+        query = {"$or": [{"userId": oid}, {"userId": user_id}]}
+    except Exception:
+        query = {"userId": user_id}
+
+    docs = list(col.find(query))
+  #  print(f"DEBUG: analyze - query={query} -> found {len(docs)} docs")
+
+    if docs:
+        first = docs[0]
+      #  print("DEBUG: sample first.userId raw:", repr(first.get("userId")), "type:", type(first.get("userId")))
+
+    if not docs:
+        return {
+            "user_id": user_id,
+            "analysis_date": date.today().isoformat(),
+            "category_summaries": [],
+            "anomalies": [],
+            "overall_advice_hint": "No transactions found for this user."
+        }
+
+    # =======================
+    # 💰 Parse transactions
+    # =======================
+    txs = []
+    for d in docs:
+        amt = d.get("amount", 0)
+        try:
+            amt_f = float(amt)
+            spend = abs(amt_f)
+        except Exception:
+            amt_f = 0.0
+            spend = 0.0
+
+        cat = d.get("category") or "Other"
+        date_str = d.get("date")
+        parsed = parse_date_iso(date_str) if date_str else None
+
+        txs.append({
+            "id": str(d.get("_id", "")),
+            "amount": amt_f,
+            "spend": spend,
+            "category": cat,
+            "date": parsed
+        })
+
+    today = date.today()
+    all_dates = [parse_date_iso(d.get("date")) for d in docs if d.get("date")]
+    valid_dates = [d for d in all_dates if d]
+    if valid_dates:
+        latest = max(valid_dates)
+        current_key = (latest.year, latest.month)
+    else:
+        current_key = (today.year, today.month)
+
+    totals_by_month = defaultdict(float)
+    cat_month = defaultdict(lambda: defaultdict(float))
+    cat_tx_counts = defaultdict(lambda: defaultdict(int))
+    cat_tx_sums = defaultdict(lambda: defaultdict(float))
+
+    all_spends = []
+    for tx in txs:
+        if tx["date"] is None:
+            continue
+        k = month_key(tx["date"])
+        totals_by_month[k] += tx["spend"]
+        cat_month[tx["category"]][k] += tx["spend"]
+        cat_tx_counts[tx["category"]][k] += 1
+        cat_tx_sums[tx["category"]][k] += tx["spend"]
+        all_spends.append(tx["spend"])
+
+    prev_year, prev_month = current_key
+    if prev_month == 1:
+        prev_key = (prev_year - 1, 12)
+    else:
+        prev_key = (prev_year, prev_month - 1)
+
+    # =======================
+    # 📊 Category summaries
+    # =======================
+    category_summaries = []
+    for cat, months in cat_month.items():
+        curr = months.get(current_key, 0.0)
+        prev = months.get(prev_key, 0.0)
+        mom = None if prev == 0 else round(((curr - prev) / prev) * 100, 2)
+
+        month_vals = sorted(months.items(), key=lambda x: x[0])
+        last_vals = [v for _, v in month_vals[-3:]]
+        fallback_forecast = round(sum(last_vals) / len(last_vals), 2) if last_vals else round(curr, 2)
+
+        forecast = float(fallback_forecast)
+        if model is not None:
+            try:
+                prev_total = float(curr)
+                tx_count = cat_tx_counts[cat].get(current_key, 0)
+                avg_tx = (cat_tx_sums[cat].get(current_key, 0.0) / tx_count) if tx_count > 0 else 0.0
+
+                nm_year, nm_month = next_month_key(*current_key)
+                month_sin = np.sin(2 * np.pi * nm_month / 12)
+                month_cos = np.cos(2 * np.pi * nm_month / 12)
+
+                if cat_le is not None and hasattr(cat_le, "classes_"):
+                    try:
+                        category_code = int(np.where(cat_le.classes_ == cat)[0][0])
+                    except Exception:
+                        category_code = -1
+                else:
+                    category_code = -1
+
+                if user_le is not None and hasattr(user_le, "classes_"):
+                    try:
+                        user_code = int(np.where(user_le.classes_ == user_id)[0][0])
+                    except Exception:
+                        user_code = -1
+                else:
+                    user_code = -1
+
+                # ✅ FIXED: use DataFrame to preserve feature names
+                feat_row = {
+                    "prev_total": prev_total,
+                    "tx_count": tx_count,
+                    "avg_tx": avg_tx,
+                    "month_sin": month_sin,
+                    "month_cos": month_cos,
+                    "category_code": category_code,
+                    "user_code": user_code
+                }
+
+                Xdf = pd.DataFrame([feat_row], columns=[
+                    "prev_total", "tx_count", "avg_tx",
+                    "month_sin", "month_cos", "category_code", "user_code"
+                ])
+                ypred = model.predict(Xdf)
+                forecast = float(round(float(ypred[0]), 2))
+
+            except Exception as e:
+                print("ML predict failed for user", user_id, "category", cat, "error:", e)
+                forecast = float(fallback_forecast)
+
+        is_over_budget = False
+        if prev > 0:
+            is_over_budget = curr > prev * 1.10
+        else:
+            is_over_budget = curr > 0 and prev == 0 and len(last_vals) > 1 and curr > sum(last_vals[:-1])
+
+        recommendation = "Try reducing recurring buys or weekly takeout; set a category budget."
+        if cat.lower() in ("food", "eating", "dining", "restaurant"):
+            recommendation = "Cook at home more often; try meal-prep for 1–2 days."
+        elif cat.lower() in ("entertainment", "movies", "subscriptions", "ott"):
+            recommendation = "Review and cancel unused subscriptions; choose 1 streaming plan."
+
+        category_summaries.append({
+            "category": cat,
+            "current_month_spend": round(curr, 2),
+            "forecast_next_month": forecast,
+            "mom_change_pct": mom,
+            "is_over_budget": bool(is_over_budget),
+            "recommendation_short": recommendation
+        })
+
+    # =======================
+    # ⚠️ Anomaly Detection
+    # =======================
+    anomalies = []
+    try:
+        if len(all_spends) >= 3:
+            mean_ = statistics.mean(all_spends)
+            stdev = statistics.pstdev(all_spends)
+            threshold = mean_ + 3 * stdev
+            for tx in txs:
+                if tx["spend"] > threshold:
+                    anomalies.append({
+                        "transaction_id": tx["id"],
+                        "amount": tx["amount"],
+                        "reason": "one-off large payment (statistical outlier)",
+                    })
+        else:
+            sorted_txs = sorted(txs, key=lambda x: x["spend"], reverse=True)[:2]
+            for tx in sorted_txs:
+                if tx["spend"] > 0:
+                    anomalies.append({
+                        "transaction_id": tx["id"],
+                        "amount": tx["amount"],
+                        "reason": "large transaction (few data points)"
+                    })
+    except Exception:
+        anomalies = []
+
+    overall_hint = "No significant spending detected"
+    sorted_by_curr = sorted(category_summaries, key=lambda x: x["current_month_spend"], reverse=True)
+    top_cats = [c["category"] for c in sorted_by_curr[:2]]
+    if top_cats and sum([c["current_month_spend"] for c in sorted_by_curr[:2]]) > 0:
+        overall_hint = f"Overspending in {', '.join(top_cats)}"
+
+    return {
+        "user_id": user_id,
+        "analysis_date": today.isoformat(),
+        "category_summaries": category_summaries,
+        "anomalies": anomalies,
+        "overall_advice_hint": overall_hint
+    }
