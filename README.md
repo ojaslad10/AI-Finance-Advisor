@@ -61,7 +61,7 @@ It integrates features like **EMI management**, **daily summaries**, and **AI ch
 ### 🖥 Backend (Spring Boot)
 1. Clone the repository:
    ```bash
-   git clone https://github.com/<your-username>/AI-Expense-Tracker.git
+   git clone https://github.com/ojaslad10/AI-Expense-Tracker.git
    cd backend
 
 
