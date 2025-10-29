@@ -566,9 +566,6 @@ class MainViewModel(
     }
 
 
-
-
-
     fun signup(name: String, email: String, phone: String, password: String, onResult: (Boolean, String?) -> Unit) {
         viewModelScope.launch {
             try {

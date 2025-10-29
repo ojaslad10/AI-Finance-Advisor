@@ -1,1 +1,46 @@
+# =======================
+# Android / Kotlin
+# =======================
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/build
+/captures
+/output.json
+*.apk
+*.aab
+
+# =======================
+# Spring Boot / Java
+# =======================
+target/
+*.class
+*.jar
+*.war
+*.log
+
+# =======================
+# Python
+# =======================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+.env/
 .env
+*.sqlite3
+*.db
+
+# =======================
+# macOS system files
+# =======================
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.Spotlight-V100
+.Trashes
