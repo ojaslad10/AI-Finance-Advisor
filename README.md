@@ -39,6 +39,7 @@ It also features an **AI Advisor chatbot** powered by the **OpenAI API** and a *
 
 ---
 
+## Screenshots
 
 ---
 
