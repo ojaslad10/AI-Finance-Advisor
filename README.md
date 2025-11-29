@@ -40,7 +40,7 @@ It also features an **AI Advisor chatbot** powered by the **OpenAI API** and a *
 ---
 
 ## 📲 Screenshots
-![Dashboard Screenshot]([https://github.com/ojaslad/Finance-Advisor/blob/main/assets/dashboard.png?raw=true](https://github.com/ojaslad10/AI-Finance-Advisor/blob/main/screenchot.png))
+![Dashboard Screenshot]([https://github.com/ojaslad/Finance-Advisor/blob/main/dashboard.png?raw=true](https://github.com/ojaslad10/AI-Finance-Advisor/blob/main/screenchot.png))
 
 ---
 
