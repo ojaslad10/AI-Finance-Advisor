@@ -23,6 +23,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import com.example.expensetracker.ui.sms.CategoryMemory
+
 
 class SmsReviewActivity : ComponentActivity() {
 
@@ -30,41 +32,6 @@ class SmsReviewActivity : ComponentActivity() {
         "Food", "Transport", "Shopping", "Bills", "Grocery",
         "Stationery", "Dairy", "Entertainment", "Medical", "Utilities", "Other"
     )
-
-    private fun onSaveExpenseAndClose(
-        idempotencyKey: String?,
-        title: String,
-        amount: Double,
-        dateIso: String,
-        category: String,
-        direction: String
-    ) {
-        try {
-            val vm = (application as? App)?.let { /* obtain your MainViewModel via other mechanism */ }
-
-        } catch (ignored: Exception) {}
-
-        val intent = Intent(NotificationHelper.ACTION_EXPENSE_ADDED).apply {
-            putExtra(NotificationHelper.EXTRA_IDEMPOTENCY, idempotencyKey)
-            putExtra(NotificationHelper.EXTRA_AMOUNT, amount)
-            putExtra(NotificationHelper.EXTRA_RECEIVER, title)
-            putExtra(NotificationHelper.EXTRA_CATEGORY, category)
-            putExtra(NotificationHelper.EXTRA_DATE, dateIso)
-            putExtra(NotificationHelper.EXTRA_DIRECTION, direction)
-        }
-
-
-        try {
-            sendBroadcast(intent)
-        } catch (e: Exception) {
-            Log.w("SmsReviewActivity", "sendBroadcast failed: ${e.message}")
-        }
-
-        if (!idempotencyKey.isNullOrBlank()) {
-            NotificationHelper.cancelNotification(this, idempotencyKey.hashCode())
-        }
-        finish()
-    }
 
 
     @OptIn(ExperimentalMaterial3Api::class)
@@ -153,28 +120,45 @@ class SmsReviewActivity : ComponentActivity() {
                                 CoroutineScope(Dispatchers.IO).launch {
                                     try {
                                         val token = SessionManager(this@SmsReviewActivity).getToken()
-                                        // finalAmount: positive number (we will signal direction)
-                                        val finalAmount = amount // already positive
+
+                                        // ✅ SIGN FIX: negative for debit (expense), positive for credit (income)
+                                        val signedForBackend =
+                                            if (direction.equals("credit", true)) kotlin.math.abs(amount)
+                                            else -kotlin.math.abs(amount)
+
                                         if (!token.isNullOrBlank()) {
                                             try {
                                                 val req = ExpenseRequest(
-                                                    amount = if (direction.equals("credit", true)) finalAmount else finalAmount, // keep positive; ViewModel handles sign
+                                                    amount = signedForBackend, // <-- send signed amount to backend
                                                     bank = "",
                                                     account = "",
                                                     receiver = title.ifBlank { suggestedReceiver.ifBlank { "Expense" } },
-                                                    date = if (dateIso.isNotBlank()) dateIso else java.time.LocalDate.now().toString()
+                                                    date = if (dateIso.isNotBlank()) dateIso else java.time.LocalDate.now().toString(),
+                                                    category = selectedCategory
                                                 )
-                                                RetrofitClient.api.addExpense("Bearer $token", req) // backend will process; your post may treat sign differently — but ViewModel will reconcile
+                                                RetrofitClient.api.addExpense("Bearer $token", req)
                                             } catch (ex: Exception) {
                                                 // ignore, we will still broadcast local change
+                                                Log.e("SmsReview", "Backend addExpense failed: ${ex.message}", ex)
                                             }
                                         }
 
-                                        // broadcast local change (so UI updates)
+                                        // Remember the user’s chosen category for this merchant/title
+                                        CategoryMemory.remember(
+                                            this@SmsReviewActivity,
+                                            title.ifBlank { suggestedReceiver.ifBlank { "Expense" } },
+                                            selectedCategory
+                                        )
+
+
+                                        // Broadcast local change so UI updates (keep amount positive; direction carries semantics)
                                         val b = Intent(NotificationHelper.ACTION_EXPENSE_ADDED).apply {
                                             putExtra(NotificationHelper.EXTRA_IDEMPOTENCY, idempotency)
-                                            putExtra(NotificationHelper.EXTRA_AMOUNT, finalAmount)
-                                            putExtra(NotificationHelper.EXTRA_RECEIVER, title.ifBlank { suggestedReceiver.ifBlank { "Expense" } })
+                                            putExtra(NotificationHelper.EXTRA_AMOUNT, kotlin.math.abs(amount))
+                                            putExtra(
+                                                NotificationHelper.EXTRA_RECEIVER,
+                                                title.ifBlank { suggestedReceiver.ifBlank { "Expense" } }
+                                            )
                                             putExtra(NotificationHelper.EXTRA_CATEGORY, selectedCategory)
                                             putExtra(NotificationHelper.EXTRA_DATE, dateIso)
                                             putExtra(NotificationHelper.EXTRA_DIRECTION, direction)
@@ -187,7 +171,6 @@ class SmsReviewActivity : ComponentActivity() {
                             }
                         }) { Text("Save") }
 
-
                         OutlinedButton(onClick = { finish() }) {
                             Text("Cancel")
                         }
@@ -196,4 +179,5 @@ class SmsReviewActivity : ComponentActivity() {
             }
         }
     }
+
 }

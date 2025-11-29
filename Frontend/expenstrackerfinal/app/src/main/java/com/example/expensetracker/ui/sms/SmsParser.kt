@@ -182,4 +182,21 @@ object SmsParser {
         val raw = "${sender.trim().lowercase()}|${dateIso}|${String.format("%.2f", amount)}|${snippet.trim().take(120)}"
         return sha256Hex(raw)
     }
+
+    // Public helper: guess category from edited title or receiver
+    fun guessCategoryFromText(text: String, receiverHint: String? = null): String {
+        // Reuse the same heuristic keywords as parse()
+        val low = (text + " " + (receiverHint ?: "")).lowercase()
+        return when {
+            low.contains("uber") || low.contains("ola") || low.contains("taxi") -> "Transport"
+            low.contains("swiggy") || low.contains("zomato") || low.contains("restaurant") -> "Food"
+            low.contains("amazon") || low.contains("flipkart") || low.contains("shopping") -> "Shopping"
+            low.contains("netflix") || low.contains("ott") || low.contains("subscription") -> "Entertainment"
+            low.contains("salary") || low.contains("payroll") -> "Income"
+            low.contains("emi") || low.contains("loan") -> "EMI"
+            low.contains("grocery") || low.contains("bigbazaar") -> "Grocery"
+            else -> "Other"
+        }
+    }
+
 }

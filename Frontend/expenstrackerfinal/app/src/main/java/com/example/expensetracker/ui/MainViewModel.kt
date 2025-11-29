@@ -31,7 +31,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import com.example.expensetracker.ui.dashboard.CategoryExpense
-import com.example.expensetracker.ui.dashboard.defaultCategoryExpenses
+import com.example.expensetracker.ui.dashboard.AppColors
+
+
+
+
 
 
 data class ParsedSms(
@@ -42,9 +46,7 @@ data class ParsedSms(
     val date: String
 )
 
-class MainViewModel(
-
-) : ViewModel() {
+class MainViewModel() : ViewModel() {
 
     var bankBalance = mutableStateOf(0.0)
         private set
@@ -60,20 +62,33 @@ class MainViewModel(
 
 
 
-    private val uiDateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM dd, yyyy", Locale.ENGLISH)
+
+
+    private val uiDateFormatter = DateTimeFormatter.ofPattern("MMM dd, yyyy", Locale.ENGLISH)
     private val isoFormatter: DateTimeFormatter = DateTimeFormatter.ISO_LOCAL_DATE
     private val emiUiFormatter = DateTimeFormatter.ofPattern("MMM dd, yyyy", Locale.ENGLISH)
-    private val dmy2Formatter: DateTimeFormatter = DateTimeFormatter.ofPattern("dd/MM/yy", Locale.ENGLISH)
-    private val dmy4Formatter: DateTimeFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.ENGLISH)
-    // Dashboard state exposed to UI
+    private val dmy2Formatter = DateTimeFormatter.ofPattern("dd/MM/yy", Locale.ENGLISH)
+    private val dmy4Formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.ENGLISH)
+
     private val _dashboardState = MutableStateFlow<DashboardSummary?>(null)
     val dashboardState: StateFlow<DashboardSummary?> = _dashboardState
+
     private val repository = com.example.expensetracker.ui.network.ExpenseRepository()
     private val _localTransactions = MutableStateFlow<List<com.example.expensetracker.ui.network.Expense>>(emptyList())
     val localTransactions: StateFlow<List<com.example.expensetracker.ui.network.Expense>> = _localTransactions.asStateFlow()
 
-    val _categoryExpenses = MutableStateFlow<List<com.example.expensetracker.ui.dashboard.CategoryExpense>>(defaultCategoryExpenses())
-    val categoryExpenses: StateFlow<List<com.example.expensetracker.ui.dashboard.CategoryExpense>> = _categoryExpenses.asStateFlow()
+    // ✅ rename to avoid looking like a function
+    private val defaultCategoryList = listOf(
+        CategoryExpense("Food", 0.0, 0f, AppColors.CategoryColors[0]),
+        CategoryExpense("Transport", 0.0, 0f, AppColors.CategoryColors[1]),
+        CategoryExpense("Shopping", 0.0, 0f, AppColors.CategoryColors[2]),
+        CategoryExpense("Bills", 0.0, 0f, AppColors.CategoryColors[3]),
+        CategoryExpense("Grocery", 0.0, 0f, AppColors.CategoryColors[4])
+    )
+
+    // ✅ initialize without parentheses and keep backing flow private
+    private val _categoryExpenses = MutableStateFlow<List<CategoryExpense>>(defaultCategoryList)
+    val categoryExpenses: StateFlow<List<CategoryExpense>> = _categoryExpenses.asStateFlow()
 
 
     init {
@@ -103,7 +118,7 @@ class MainViewModel(
     private fun formatToUi(date: LocalDate): String = date.format(uiDateFormatter)
 
     fun addLocalTransaction(title: String, amount: Double, date: String, category: String? = null) {
-        val exp = Expense(
+        val exp = com.example.expensetracker.ui.network.Expense(
             amount = amount,
             bank = "",
             account = "",
@@ -119,7 +134,7 @@ class MainViewModel(
                 _localTransactions.value = newest
 
                 transactions.add(
-                    Transaction(
+                    com.example.expensetracker.ui.dashboard.Transaction(
                         id = (transactions.size + 1).toString(),
                         title = title,
                         amount = amount,
@@ -129,16 +144,35 @@ class MainViewModel(
                     )
                 )
 
-                fetchDashboardData()
+                // ✅ recompute + push state immediately
                 recomputeTodaysExpense()
+                updateCategoryBreakdown()
+                updateDashboardState()          // <— instant UI update
+
+                // (optional) keep if you also want the async recomputation path
+                // fetchDashboardData()
             } catch (e: Exception) {
                 Log.e("MainViewModel", "Failed to save local transaction", e)
             }
         }
     }
 
+    private val defaultCategoriesOrder = listOf(
+        "Food",
+        "Transport",
+        "Shopping",
+        "Bills",
+        "Grocery",
+        "Entertainment",
+        "Medical",
+        "Utilities",
+        "Other"
+    )
 
 
+    private fun updateCategoryBreakdown() {
+        _categoryExpenses.value = computeCategoryExpenses(defaultCategoriesOrder)
+    }
 
     private fun sendInternalExpenseBroadcast(
         idempotency: String?,
@@ -231,45 +265,6 @@ class MainViewModel(
 
     fun refreshTodaysExpense() = recomputeTodaysExpense()
 
-    private fun parseExpenseListFromResponse(raw: Any?): List<Map<String, Any>> {
-        val out = mutableListOf<Map<String, Any>>()
-        if (raw == null) return out
-
-        when (raw) {
-            is List<*> -> raw.filterIsInstance<Map<*, *>>().forEach { m ->
-                out.add(m.mapKeys { it.key.toString() }.mapValues { it.value as Any })
-            }
-            is Map<*, *> -> {
-                val keysToCheck = listOf("expenses", "data", "result", "payload")
-                for (k in keysToCheck) {
-                    val v = raw[k]
-                    if (v is List<*>) {
-                        v.filterIsInstance<Map<*, *>>().forEach { m ->
-                            out.add(m.mapKeys { it.key.toString() }.mapValues { it.value as Any })
-                        }
-                        if (out.isNotEmpty()) return out
-                    } else if (v is Map<*, *>) {
-                        out.add(v.mapKeys { it.key.toString() }.mapValues { it.value as Any })
-                        return out
-                    }
-                }
-
-                if (raw.containsKey("amount") || raw.containsKey("receiver") || raw.containsKey("date") || raw.containsKey("createdAt")) {
-                    out.add(raw.mapKeys { it.key.toString() }.mapValues { it.value as Any })
-                } else {
-                    // try nested lists anywhere
-                    raw.values.forEach { v ->
-                        if (v is List<*>) {
-                            v.filterIsInstance<Map<*, *>>().forEach { m ->
-                                out.add(m.mapKeys { it.key.toString() }.mapValues { it.value as Any })
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        return out
-    }
 
     fun setBankBalance(amount: Double) {
         bankBalance.value = amount
@@ -291,60 +286,6 @@ class MainViewModel(
     }
 
 
-    fun addExpenseFromSms(message: String, sender: String = "unknown") {
-        val parsed = SmsParser.parse(message, sender, null)
-        if (parsed == null) {
-            Log.d("MainViewModel", "SMS parse failed for: $message")
-            return
-        }
-
-        viewModelScope.launch {
-            try {
-                val signedAmount = when (parsed.direction.lowercase()) {
-                    "credit" -> kotlin.math.abs(parsed.amount)
-                    "debit"  -> -kotlin.math.abs(parsed.amount)
-                    else     -> -kotlin.math.abs(parsed.amount) // default treat as debit
-                }
-
-                bankBalance.value = bankBalance.value + signedAmount
-
-                val displayDate = parseDateFlexible(parsed.date)?.let { formatToUi(it) }
-                    ?: LocalDate.now().format(uiDateFormatter)
-
-                val title = if (signedAmount >= 0) "From ${parsed.receiver}" else "To ${parsed.receiver}"
-
-                addLocalTransaction(title, signedAmount, displayDate)
-
-                App.context?.let { ctx ->
-                    val token = SessionManager(ctx).getToken()
-                    if (!token.isNullOrEmpty()) {
-                        try {
-                            RetrofitClient.api.addExpense(
-                                "Bearer $token",
-                                ExpenseRequest(
-                                    amount = signedAmount, // positive = credit, negative = debit
-                                    bank = parsed.bank,
-                                    account = parsed.account,
-                                    receiver = parsed.receiver,
-                                    date = parsed.date
-                                )
-                            )
-                            Log.d("MainViewModel", "Expense from SMS sent to backend (idempotency=${parsed.idempotencyKey})")
-                        } catch (e: Exception) {
-                            Log.e("MainViewModel", "Error saving SMS expense to backend", e)
-                        }
-                    } else {
-                        Log.d("MainViewModel", "No token: SMS expense kept locally")
-                    }
-                }
-                recomputeTodaysExpense()
-            } catch (e: Exception) {
-                Log.e("MainViewModel", "Error in addExpenseFromSms", e)
-            }
-        }
-    }
-
-
     fun addManualExpense(
         title: String,
         amount: Double,
@@ -354,27 +295,35 @@ class MainViewModel(
     ) {
         viewModelScope.launch {
             try {
-                val outgoing = abs(amount)
+                val outgoing = kotlin.math.abs(amount)
 
+                // Embed category in title for local UI breakdown
+                val titleWithCategory = run {
+                    val cat = (category ?: "").trim()
+                    val alreadyTagged = title.trim().startsWith("[")
+                    if (cat.isNotBlank() && !alreadyTagged) "[${cat}] $title" else title
+                }
+
+                // Local state
                 bankBalance.value = (bankBalance.value - outgoing)
+                addLocalTransaction(titleWithCategory, -outgoing, date, category)
 
-                addLocalTransaction(title, -outgoing, date, category)
+                // ✅ push dashboard immediately (addLocalTransaction already does this, but safe)
+                updateDashboardState()
 
-                fetchDashboardData()
-
+                // Backend (send negative for expense)
                 App.context?.let { ctx ->
                     val token = SessionManager(ctx).getToken()
                     if (!token.isNullOrEmpty()) {
                         try {
-                            // If your backend ExpenseRequest supports category, send it
                             RetrofitClient.api.addExpense(
                                 "Bearer $token",
                                 ExpenseRequest(
-                                    amount = outgoing,   // positive outgoing amount (backend logic)
+                                    amount = -outgoing,
                                     bank = "",
                                     account = "",
                                     receiver = title,
-                                    category = category ?: "Other", // include category if backend accepts it
+                                    category = category ?: "Other",
                                     date = date
                                 )
                             )
@@ -382,18 +331,26 @@ class MainViewModel(
                         } catch (e: Exception) {
                             Log.e("MainViewModel", "Error saving manual expense to backend", e)
                         }
-                    } else {
-                        Log.d("MainViewModel", "No token: manual expense stored locally only")
                     }
                 }
 
                 onResult?.invoke(true, "Expense added")
-                sendInternalExpenseBroadcast(idempotency = null, amount = outgoing, receiver = title, category = category ?: "Other", date = date, direction = "debit")
+                sendInternalExpenseBroadcast(
+                    idempotency = null,
+                    amount = outgoing,
+                    receiver = title,
+                    category = category ?: "Other",
+                    date = date,
+                    direction = "debit"
+                )
             } catch (e: Exception) {
                 onResult?.invoke(false, e.message)
             }
         }
     }
+
+
+
 
 
     fun refreshEmisForToday() {
@@ -460,74 +417,6 @@ class MainViewModel(
         }
     }
 
-
-    fun loadEmisFromBackendOrPersisted(listFromBackend: List<EMIItem>) {
-        allEmis.clear()
-        allEmis.addAll(listFromBackend)
-        refreshEmisForToday()
-    }
-
-
-    fun fetchExpensesAndBalance(tokenHeader: String) {
-        viewModelScope.launch {
-            try {
-                // Balance
-                try {
-                    val balanceResp: Map<String, Any> = RetrofitClient.api.getBalance(tokenHeader)
-                    Log.d("MainViewModel", "getBalance raw: $balanceResp")
-                    val balAny = balanceResp["balance"] ?: (balanceResp["data"] as? Map<*, *>)?.get("balance")
-                    val parsedBalance = when (balAny) {
-                        is Number -> balAny.toDouble()
-                        is String -> balAny.toDoubleOrNull()
-                        else -> null
-                    }
-                    parsedBalance?.let {
-                        bankBalance.value = it
-                        Log.d("MainViewModel", "bankBalance set from server: $it")
-                    }
-                } catch (be: Exception) {
-                    Log.w("MainViewModel", "Failed to fetch balance: ${be.message}")
-                }
-
-                try {
-                    val expensesRaw: Any? = RetrofitClient.api.getExpenseSummary(tokenHeader)
-                    Log.d("MainViewModel", "getExpenseSummary raw: $expensesRaw")
-                    val list = parseExpenseListFromResponse(expensesRaw)
-                    transactions.clear()
-                    // optional starter
-                    transactions.add(Transaction("1", "Initial Balance", 0.0, LocalDate.now().format(uiDateFormatter), Icons.Default.ShoppingCart, true))
-
-                    list.forEach { e ->
-                        val title = e["receiver"]?.toString() ?: e["title"]?.toString() ?: "Expense"
-                        val amountNum = (e["amount"] as? Number)?.toDouble()
-                            ?: (e["amount"] as? String)?.toDoubleOrNull()
-                            ?: 0.0
-                        val dateRaw = e["date"]?.toString() ?: e["createdAt"]?.toString() ?: LocalDate.now().toString()
-                        val parsedDate = parseDateFlexible(dateRaw) ?: LocalDate.now()
-                        val dateUi = formatToUi(parsedDate)
-
-                        transactions.add(
-                            Transaction(
-                                id = (transactions.size + 1).toString(),
-                                title = title,
-                                amount = -abs(amountNum),
-                                date = dateUi,
-                                icon = Icons.Default.ShoppingCart,
-                                isIncome = false
-                            )
-                        )
-                    }
-
-                    recomputeTodaysExpense()
-                    Log.d("MainViewModel", "Loaded ${transactions.size} transactions from server; today's expense=${todaysExpense.value}")
-                } catch (ee: Exception) {
-                    Log.e("MainViewModel", "Failed to fetch expenses: ${ee.message}", ee)
-                }
-            } catch (e: Exception) {
-                Log.e("MainViewModel", "fetchExpensesAndBalance error", e)
-            }
-        }
-    }
 
     fun restoreSession(onResult: (Boolean) -> Unit) {
         App.context?.let { ctx ->
@@ -650,7 +539,6 @@ class MainViewModel(
                     -kotlin.math.abs(amount)
                 }
 
-                // 1️⃣ Add to local transactions immediately
                 val displayDate = date.ifBlank { LocalDate.now().toString() }
                 transactions.add(
                     com.example.expensetracker.ui.dashboard.Transaction(
@@ -665,16 +553,20 @@ class MainViewModel(
 
                 bankBalance.value += signedAmount
                 recomputeTodaysExpense()
+
+                // ✅ update categories after transaction change
+                updateCategoryBreakdown()
+
                 updateDashboardState()
                 fetchDashboardData()
 
                 Log.d("MainViewModel", "handleIncomingExpense: Added '$title' ₹$amount ($direction) -> Dashboard updated")
-
             } catch (e: Exception) {
                 Log.e("MainViewModel", "Failed to handle incoming expense", e)
             }
         }
     }
+
 
 
     private fun updateDashboardState() {
@@ -765,6 +657,7 @@ class MainViewModel(
                         }
 
                         refreshTodaysExpense()
+                        updateCategoryBreakdown()
                         Log.d("MainViewModel", "Transactions loaded after login: ${transactions.size}")
                     } catch (e: Exception) {
                         Log.e("MainViewModel", "Non-fatal: error fetching/processing expenses after login", e)
@@ -795,16 +688,6 @@ class MainViewModel(
         }
     }
 
-
-    fun getTotalIncomeThisMonth(): Double {
-        val now = LocalDate.now()
-        val (month, year) = now.month to now.year
-        return transactions.asSequence()
-            .mapNotNull { tx -> parseDateFlexible(tx.date)?.let { Pair(tx, it) } }
-            .filter { (_, date) -> date.month == month && date.year == year }
-            .map { (tx, _) -> if (tx.amount > 0) tx.amount else 0.0 }
-            .sum()
-    }
 
     fun getTotalExpenseThisMonth(): Double {
         val now = LocalDate.now()
@@ -844,26 +727,48 @@ class MainViewModel(
 
                     transactions.clear()
 
-                    transactions.add(Transaction("1", "Initial Balance", 0.0, LocalDate.now().format(uiDateFormatter), Icons.Default.ShoppingCart, true))
+                    transactions.add(
+                        com.example.expensetracker.ui.dashboard.Transaction(
+                            "1",
+                            "Initial Balance",
+                            0.0,
+                            LocalDate.now().format(uiDateFormatter),
+                            androidx.compose.material.icons.Icons.Default.ShoppingCart,
+                            true
+                        )
+                    )
 
                     expenseList.forEach { e ->
-                        val title = e["receiver"]?.toString() ?: e["title"]?.toString() ?: "Expense"
-                        val amt = (e["amount"] as? Number)?.toDouble() ?: (e["amount"] as? String)?.toDoubleOrNull() ?: 0.0
-                        val date = e["date"]?.toString() ?: LocalDate.now().format(uiDateFormatter)
+                        val rawTitle = e["receiver"]?.toString() ?: e["title"]?.toString() ?: "Expense"
+                        val cat = e["category"]?.toString()?.takeIf { it.isNotBlank() } ?: "Other"
+                        val title = if (rawTitle.trim().startsWith("[")) rawTitle else "[${cat}] $rawTitle"
+
+                        val amt = (e["amount"] as? Number)?.toDouble()
+                            ?: (e["amount"] as? String)?.toDoubleOrNull()
+                            ?: 0.0
+
+                        val dateRaw = e["date"]?.toString() ?: e["createdAt"]?.toString() ?: LocalDate.now().toString()
+                        val parsedDate = parseDateFlexible(dateRaw) ?: LocalDate.now()
+                        val dateUi = parsedDate.format(uiDateFormatter)
 
                         transactions.add(
                             Transaction(
                                 id = (transactions.size + 1).toString(),
-                                title = title,
-                                amount = -kotlin.math.abs(amt),
-                                date = date,
+                                title = title,                               // ✅ tagged
+                                amount = if (amt > 0) amt else -kotlin.math.abs(amt), // preserve sign
+                                date = dateUi,
                                 icon = Icons.Default.ShoppingCart,
-                                isIncome = false
+                                isIncome = amt > 0
                             )
                         )
                     }
 
+
                     refreshTodaysExpense()
+
+                    // ✅ refresh category breakdown after loading from backend
+                    updateCategoryBreakdown()
+
                     Log.d("MainViewModel", "Loaded ${transactions.size} transactions from backend")
                 }
             } catch (e: Exception) {
@@ -871,6 +776,7 @@ class MainViewModel(
             }
         }
     }
+
 
     fun getRecentTransactions(limit: Int = 5): List<Transaction> {
         val snap = transactions.toList()
@@ -1093,13 +999,21 @@ class MainViewModel(
         }
     }
 
-    fun addManualCredit(title: String, amount: Double, date: String = LocalDate.now().format(uiDateFormatter), onResult: ((Boolean, String?) -> Unit)? = null) {
+    fun addManualCredit(
+        title: String,
+        amount: Double,
+        date: String = LocalDate.now().format(uiDateFormatter),
+        onResult: ((Boolean, String?) -> Unit)? = null
+    ) {
         viewModelScope.launch {
             try {
-                val incoming = kotlin.math.abs(amount) // ensure positive
+                val incoming = kotlin.math.abs(amount)
                 bankBalance.value += incoming
 
                 addLocalTransaction(title, incoming, date)
+
+                // ✅ instant dashboard refresh
+                updateDashboardState()
 
                 App.context?.let { ctx ->
                     val token = SessionManager(ctx).getToken()
@@ -1119,8 +1033,6 @@ class MainViewModel(
                         } catch (e: Exception) {
                             Log.e("MainViewModel", "Error sending manual credit to backend", e)
                         }
-                    } else {
-                        Log.d("MainViewModel", "No token: manual credit stored locally only")
                     }
                 }
 
@@ -1130,4 +1042,6 @@ class MainViewModel(
             }
         }
     }
+
+
 }

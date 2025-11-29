@@ -218,9 +218,9 @@ fun DashboardScreen(viewModel: MainViewModel) {
 
 @Composable
 fun OverviewSection(viewModel: MainViewModel) {
-    val bankBalance by remember { derivedStateOf { viewModel.bankBalance.value } }
-    val totalExpense by remember { derivedStateOf { viewModel.getTotalExpenseThisMonth() } }
-    val todaysExpense by remember { derivedStateOf { viewModel.getTodaysExpense() } }
+    val bankBalance = viewModel.bankBalance.value          // tracked state
+    val totalExpense = viewModel.getTotalExpenseThisMonth() // computed from tracked list
+    val todaysExpense = viewModel.getTodaysExpense()        // tracked state
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
@@ -265,6 +265,7 @@ fun OverviewSection(viewModel: MainViewModel) {
         )
     }
 }
+
 
 @Composable
 fun OverviewCard(
@@ -488,7 +489,8 @@ fun BarChart(data: List<MonthlyExpense>) {
 
 @Composable
 fun TransactionsSection(viewModel: MainViewModel) {
-    val recent = remember { derivedStateOf { viewModel.getRecentTransactions(limit = 5) } }.value
+    // Read fresh data on every recomposition (don’t wrap in remember/derivedStateOf)
+    val recent = viewModel.getRecentTransactions(limit = 5)
 
     Card(
         Modifier.fillMaxWidth(),
@@ -496,7 +498,11 @@ fun TransactionsSection(viewModel: MainViewModel) {
         elevation = CardDefaults.cardElevation(2.dp)
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text("Recent Transactions", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 TextButton(onClick = {}) { Text("View All", fontSize = 12.sp, color = AppColors.Primary) }
             }
@@ -511,6 +517,7 @@ fun TransactionsSection(viewModel: MainViewModel) {
         }
     }
 }
+
 
 @Composable
 fun EMISection(viewModel: com.example.expensetracker.ui.MainViewModel) {

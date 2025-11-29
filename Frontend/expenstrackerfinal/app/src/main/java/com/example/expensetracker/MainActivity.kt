@@ -179,25 +179,25 @@ fun ExpenseTrackerApp(viewModel: MainViewModel) {
                     }
 
                     // call ViewModel to update in-memory state and also attempt backend sync
+                    // inside onReceive(...) in ExpenseTrackerApp's DisposableEffect
                     uiScope.launch {
                         try {
-                            if (direction.equals("credit", ignoreCase = true)) {
-                                viewModel.addManualCredit(
-                                    title = if (receiverName.isBlank()) "Income" else receiverName,
-                                    amount = kotlin.math.abs(amount),
-                                    date = dateIso
-                                )
-                            } else {
-                                viewModel.addManualExpense(
-                                    title = if (receiverName.isBlank()) "Expense" else receiverName,
-                                    amount = kotlin.math.abs(amount),
-                                    date = dateIso
-                                )
-                            }
+                            viewModel.handleIncomingExpense(
+                                idempotencyKey = idempotency,
+                                receiverName = if (receiverName.isBlank()) (if (direction.equals("credit", true)) "Income" else "Expense") else receiverName,
+                                amount = kotlin.math.abs(amount),   // keep POSITIVE here
+                                date = if (dateIso.isBlank()) java.time.LocalDate.now().toString() else dateIso,
+                                category = if (category.isBlank()) "Other" else category,
+                                direction = direction               // "debit" or "credit"
+                            )
+// ensure dashboard snapshot updates
+                            viewModel.fetchDashboardData()
+
                         } catch (e: Exception) {
                             android.util.Log.e("ExpenseBroadcast", "Error handling expense broadcast", e)
                         }
                     }
+
                 } catch (e: Exception) {
                     android.util.Log.e("ExpenseBroadcast", "onReceive error", e)
                 }

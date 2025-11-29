@@ -47,6 +47,7 @@ class NotificationActionReceiver : BroadcastReceiver() {
                 val dateIso = intent.getStringExtra(NotificationHelper.EXTRA_DATE) ?: LocalDate.now().toString()
                 val direction = intent.getStringExtra(NotificationHelper.EXTRA_DIRECTION) ?: "debit"
 
+// 1) Final title (what user sees)
                 val finalTitle = when {
                     !inlineTitle.isNullOrBlank() -> inlineTitle
                     receiverExtra.isNotBlank() -> receiverExtra
@@ -54,12 +55,27 @@ class NotificationActionReceiver : BroadcastReceiver() {
                     else -> if (direction.equals("credit", ignoreCase = true)) "Income" else "Expense"
                 }
 
-                val finalCategory = if (categoryExtra.isNotBlank()) categoryExtra else "Other"
-
-                val finalAmount = when (direction.lowercase()) {
-                    "credit" -> -abs(amountRaw)
-                    else -> abs(amountRaw)
+// 2) Pick category with precedence: history > guess from edited title > suggested > Other
+                val history = CategoryMemory.getCategoryFor(context, finalTitle)
+                val guessedFromTitle = SmsParser.guessCategoryFromText(finalTitle, receiverExtra)
+                val finalCategory = when {
+                    !history.isNullOrBlank() -> history!!
+                    !guessedFromTitle.isNullOrBlank() && guessedFromTitle != "Other" -> guessedFromTitle
+                    categoryExtra.isNotBlank() -> categoryExtra
+                    else -> "Other"
                 }
+
+// 3) Compute signed amount (your previous fix)
+                val finalAmount = when (direction.lowercase()) {
+                    "credit" -> -kotlin.math.abs(amountRaw)   // your backend treats positive as income; you already reconciled this path
+                    else -> kotlin.math.abs(amountRaw)
+                }
+
+// 4) Remember the user’s *implicit* choice (title→category) so next time it’s sticky
+                CategoryMemory.remember(context, finalTitle, finalCategory)
+
+// ... proceed with your existing network call & local broadcast using finalTitle/finalCategory/finalAmount ...
+
 
                 Log.d(
                     TAG,
@@ -74,7 +90,7 @@ class NotificationActionReceiver : BroadcastReceiver() {
                             sendExpenseAddedBroadcast(
                                 context = context,
                                 idempotency = idempotency,
-                                amount = amountRaw,
+                                amount = amountRaw, // keep raw for UI broadcast; ViewModel handles direction
                                 receiver = finalTitle,
                                 category = finalCategory,
                                 dateIso = dateIso,
@@ -82,8 +98,8 @@ class NotificationActionReceiver : BroadcastReceiver() {
                             )
                         } else {
                             try {
-                                val req = ExpenseRequest(
-                                    amount = finalAmount,
+                                val req = com.example.expensetracker.ui.network.ExpenseRequest(
+                                    amount = finalAmount,      // ✅ backend receives signed amount
                                     bank = "",
                                     account = "",
                                     receiver = finalTitle,
@@ -93,13 +109,14 @@ class NotificationActionReceiver : BroadcastReceiver() {
                                 )
 
                                 Log.d(TAG, "Posting confirmed expense to backend: $req")
-                                val resp = RetrofitClient.api.addExpense("Bearer $token", req)
+                                val resp = com.example.expensetracker.ui.network.RetrofitClient.api
+                                    .addExpense("Bearer $token", req)
                                 Log.d(TAG, "Backend addExpense response: success=${resp.success}, message=${resp.message}")
 
                                 sendExpenseAddedBroadcast(
                                     context = context,
                                     idempotency = idempotency,
-                                    amount = amountRaw,
+                                    amount = amountRaw, // positive for UI path
                                     receiver = finalTitle,
                                     category = finalCategory,
                                     dateIso = dateIso,
@@ -131,6 +148,7 @@ class NotificationActionReceiver : BroadcastReceiver() {
             }
         }
     }
+
 
     private fun sendExpenseAddedBroadcast(
         context: Context,

@@ -10,9 +10,10 @@ import com.example.expensetracker.ui.add.AddTransactionScreen
 import com.example.expensetracker.ui.dashboard.DashboardScreen
 import com.example.expensetracker.ui.emi.EmiScreen
 import com.example.expensetracker.ui.ai.AiAdvisorScreen
-import com.example.expensetracker.ui.profile.ProfileScreen
 import com.example.expensetracker.ui.budget.BudgetScreen
 import com.example.expensetracker.ui.auth.AuthScreenContainer
+import com.example.expensetracker.ui.tips.TipsScreen
+
 
 @Composable
 fun NavGraph(
@@ -50,12 +51,12 @@ fun NavGraph(
             BudgetScreen(viewModel)
         }
 
-        composable(Screen.Profile.route) {
-            ProfileScreen(viewModel)
-        }
-
         composable(Screen.AddTransaction.route) {
             AddTransactionScreen(viewModel)
         }
+        composable(Screen.Tips.route) {
+            TipsScreen(viewModel)   // <-- use the real screen
+        }
+
     }
 }

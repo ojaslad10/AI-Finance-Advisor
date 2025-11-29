@@ -1,33 +1,100 @@
-HELP.md
-target/
-.mvn/wrapper/maven-wrapper.jar
-!**/src/main/**/target/
-!**/src/test/**/target/
+############################
+# GLOBAL / OS
+############################
+.DS_Store
+Thumbs.db
 
-### STS ###
-.apt_generated
+############################
+# IDEs
+############################
+# IntelliJ / Android Studio
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# VS Code
+.vscode/
+
+# Eclipse / STS
+.apt_generated/
 .classpath
 .factorypath
 .project
-.settings
+.settings/
 .springBeans
 .sts4-cache
 
-### IntelliJ IDEA ###
-.idea
-*.iws
-*.iml
-*.ipr
-
-### NetBeans ###
+# NetBeans
 /nbproject/private/
 /nbbuild/
 /dist/
 /nbdist/
 /.nb-gradle/
-build/
-!**/src/main/**/build/
-!**/src/test/**/build/
 
-### VS Code ###
-.vscode/
+############################
+# JAVA / SPRING BOOT
+############################
+target/
+*.class
+.mvn/wrapper/maven-wrapper.jar
+# If you want to keep the wrapper JAR, remove the line above
+
+############################
+# ANDROID / GRADLE
+############################
+.gradle/
+**/build/
+**/.cxx/
+**/.externalNativeBuild/
+local.properties
+captures/
+outputs/
+*.apk
+*.aab
+
+############################
+# PYTHON
+############################
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.ipynb_checkpoints/
+
+############################
+# LOGS / TEMP
+############################
+*.log
+logs/
+tmp/
+*.tmp
+
+############################
+# HEAVY ARTIFACTS (use Git LFS or store elsewhere)
+############################
+# ML models
+*.pt
+*.pth
+*.h5
+*.onnx
+*.pkl
+*.joblib
+*.bin
+
+# Data / archives
+*.csv
+*.tsv
+*.parquet
+*.feather
+*.zip
+*.tar
+*.tar.gz
+*.7z
+*.npz
+*.npy
+
+# If you must keep small sample data:
+# !samples/*.csv

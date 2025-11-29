@@ -63,12 +63,12 @@ fun DrawerContent(
             onClick = { onDestinationClicked(Screen.Settings.route) },
             icon = { Icon(Icons.Default.Settings, contentDescription = null, tint = Color.White) }
         )
-        NavigationDrawerItem(
-            label = { Text("Profile", color = Color.White) },
-            selected = false,
-            onClick = { onDestinationClicked(Screen.Profile.route) },
-            icon = { Icon(Icons.Default.Person, contentDescription = null, tint = Color.White) }
-        )
+//        NavigationDrawerItem(
+//            label = { Text("Profile", color = Color.White) },
+//            selected = false,
+//            onClick = { onDestinationClicked(Screen.Profile.route) },
+//            icon = { Icon(Icons.Default.Person, contentDescription = null, tint = Color.White) }
+//        )
 
         NavigationDrawerItem(
             label = { Text("Logout", color = Color.White) },

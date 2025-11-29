@@ -47,8 +47,8 @@ fun ProfileScreen(viewModel: MainViewModel) {
         Spacer(modifier = Modifier.height(12.dp))
 
         // User Info
-        Text("Piyush Joshi", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
-        Text("piyushjoshi10@gmail.com", fontSize = 14.sp, color = Color.Gray)
+        Text("Ojas Lad", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
+        Text("ojasladofficial150@gmail.com", fontSize = 14.sp, color = Color.Gray)
 
         Spacer(modifier = Modifier.height(24.dp))
 

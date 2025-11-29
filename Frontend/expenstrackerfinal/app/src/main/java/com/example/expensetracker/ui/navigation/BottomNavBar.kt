@@ -20,7 +20,7 @@ fun BottomNavBar(navController: NavHostController) {
         Screen.EMI,
         Screen.AddTransaction,
         Screen.AIAdvisor,
-        Screen.Profile
+        Screen.Tips // 👈 swapped in Tips
     )
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -46,7 +46,7 @@ fun BottomNavBar(navController: NavHostController) {
                             Screen.EMI -> Icons.Default.List
                             Screen.AddTransaction -> Icons.Default.Add
                             Screen.AIAdvisor -> Icons.Default.Build
-                            Screen.Profile -> Icons.Default.Person
+                            Screen.Tips -> Icons.Default.ThumbUp // 💡 icon for Tips
                             else -> Icons.Default.Home
                         }
 
@@ -60,7 +60,11 @@ fun BottomNavBar(navController: NavHostController) {
                         Spacer(modifier = Modifier.height(3.dp))
 
                         Text(
-                            text = if (screen == Screen.AIAdvisor) "Advisor" else screen.title,
+                            text = when (screen) {
+                                Screen.AIAdvisor -> "Advisor"
+                                Screen.Tips -> "Tips"
+                                else -> screen.title
+                            },
                             color = if (selected) Color(0xFF6366F1) else Color.Gray,
                             style = MaterialTheme.typography.labelSmall
                         )
@@ -74,7 +78,6 @@ fun BottomNavBar(navController: NavHostController) {
                         restoreState = true
                     }
                 },
-                // shrink highlight/indicator to match content
                 colors = NavigationBarItemDefaults.colors(
                     indicatorColor = Color(0xFF2D2D2D),
                     selectedIconColor = Color(0xFF6366F1),
